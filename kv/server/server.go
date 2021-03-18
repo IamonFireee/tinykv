@@ -46,7 +46,6 @@ func (server *Server) RawGet(_ context.Context, req *kvrpcpb.RawGetRequest) (*kv
 
 	if val != nil {
 		resp.NotFound = false
-		return resp, nil
 	}
 	resp.NotFound = true
 	return resp, nil
