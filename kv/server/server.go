@@ -38,22 +38,75 @@ func NewServer(storage storage.Storage) *Server {
 // Raw API.
 func (server *Server) RawGet(_ context.Context, req *kvrpcpb.RawGetRequest) (*kvrpcpb.RawGetResponse, error) {
 	// Your Code Here (1).
-	return nil, nil
+	reader, _ := server.storage.Reader(nil)
+	resp := new(kvrpcpb.RawGetResponse)
+	val, _ := reader.GetCF(req.GetCf(), req.GetKey())
+	reader.Close()
+	resp.Value = val
+
+	if val != nil {
+		resp.NotFound = false
+		return resp, nil
+	}
+	resp.NotFound = true
+	return resp, nil
 }
 
 func (server *Server) RawPut(_ context.Context, req *kvrpcpb.RawPutRequest) (*kvrpcpb.RawPutResponse, error) {
 	// Your Code Here (1).
-	return nil, nil
+	resp := new(kvrpcpb.RawPutResponse)
+	batch := make([]storage.Modify, 0)
+	batch = append(batch, storage.Modify{storage.Put{
+		Key:   req.GetKey(),
+		Value: req.GetValue(),
+		Cf:    req.GetCf(),
+	}})
+	err := server.storage.Write(nil, batch)
+	if err != nil {
+		resp.Error = err.Error()
+		return resp, err
+	}
+	return resp, nil
 }
 
 func (server *Server) RawDelete(_ context.Context, req *kvrpcpb.RawDeleteRequest) (*kvrpcpb.RawDeleteResponse, error) {
 	// Your Code Here (1).
-	return nil, nil
+	resp := new(kvrpcpb.RawDeleteResponse)
+	batch := make([]storage.Modify, 0)
+	batch = append(batch, storage.Modify{storage.Delete{
+		Key: req.GetKey(),
+		Cf:  req.GetCf(),
+	}})
+	err := server.storage.Write(nil, batch)
+	if err != nil {
+		resp.Error = err.Error()
+		return resp, err
+	}
+	return resp, nil
 }
 
 func (server *Server) RawScan(_ context.Context, req *kvrpcpb.RawScanRequest) (*kvrpcpb.RawScanResponse, error) {
 	// Your Code Here (1).
-	return nil, nil
+	reader, _ := server.storage.Reader(nil)
+	iter := reader.IterCF(req.GetCf())
+	iter.Seek(req.GetStartKey())
+	resp := new(kvrpcpb.RawScanResponse)
+	for i := 0; uint32(i) < req.GetLimit() && iter.Valid(); i++ {
+		item := iter.Item()
+		val, _ := item.Value()
+		resp.Kvs = append(resp.Kvs, &kvrpcpb.KvPair{
+			Error:                nil,
+			Key:                  item.Key(),
+			Value:                val,
+			XXX_NoUnkeyedLiteral: struct{}{},
+			XXX_unrecognized:     nil,
+			XXX_sizecache:        0,
+		})
+		iter.Next()
+	}
+	iter.Close()
+	reader.Close()
+	return resp, nil
 }
 
 // Raft commands (tinykv <-> tinykv)

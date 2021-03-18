@@ -12,8 +12,8 @@ import (
 // communicate with other nodes and all data is stored locally.
 type StandAloneStorage struct {
 	// Your Data Here (1).
-	db *badger.DB
-	conf    *config.Config
+	db   *badger.DB
+	conf *config.Config
 }
 
 func NewStandAloneStorage(conf *config.Config) *StandAloneStorage {
@@ -38,7 +38,8 @@ func (s *StandAloneStorage) Stop() error {
 // TODO: fucking StorageReader
 func (s *StandAloneStorage) Reader(ctx *kvrpcpb.Context) (storage.StorageReader, error) {
 	// Your Code Here (1).
-	return nil, nil
+
+	return NewAloneStoargeReader(s.db), nil
 }
 
 func (s *StandAloneStorage) Write(ctx *kvrpcpb.Context, batch []storage.Modify) error {
@@ -48,5 +49,30 @@ func (s *StandAloneStorage) Write(ctx *kvrpcpb.Context, batch []storage.Modify) 
 		_batch.SetCF(modify.Cf(), modify.Key(), modify.Value())
 	}
 	_batch.SetSafePoint()
+	// WriteToDB is atomic through badger.Update()
 	return _batch.WriteToDB(s.db)
+}
+
+// implement the StorageReader inferface
+type AloneStorageReader struct {
+	db  *badger.DB
+	txn *badger.Txn
+}
+
+func NewAloneStoargeReader(db *badger.DB) AloneStorageReader {
+	return AloneStorageReader{db: db, txn: db.NewTransaction(false)}
+}
+
+func (r AloneStorageReader) GetCF(cf string, key []byte) ([]byte, error) {
+	val, _ := engine_util.GetCFFromTxn(r.txn, cf, key)
+	return val, nil
+}
+
+func (r AloneStorageReader) IterCF(cf string) engine_util.DBIterator {
+	return engine_util.NewCFIterator(cf, r.txn)
+}
+
+func (r AloneStorageReader) Close() {
+	r.txn.Discard()
+	return
 }
